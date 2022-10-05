@@ -322,8 +322,8 @@ struct npc_medivh_bm : public ScriptedAI
               case EVENT_COUNCIL_SAY_ORCS_ANSWER:
                   if(CouncilEnforcerGuid.size()>0)
                   {
-                      Creature* council=CouncilEnforcerGuid[0];
-                      council->Talk(SAY_ORCS_ANSWER);
+                      //Creature* council=CouncilEnforcerGuid[0];
+                      //council->Talk(SAY_ORCS_ANSWER);
                   }
                   // events.ScheduleEvent(COUNCIL_WAVE4, 2s);
                   break;
