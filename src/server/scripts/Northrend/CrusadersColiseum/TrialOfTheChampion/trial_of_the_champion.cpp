@@ -1258,7 +1258,9 @@ class npc_announcer_toc5 : public CreatureScript
         bool OnGossipHello(Player* player) override
         {
 
+
             InstanceScript* instance = me->GetInstanceScript();
+            // branch toc start
             if (instance)
             {
                 /// @todo: fix this ugly code
@@ -1313,6 +1315,24 @@ class npc_announcer_toc5 : public CreatureScript
                     SendGossipMenuFor(player, GOSSIP_TEXT_THIRD_BOSS, me->GetGUID());
                 }
             }
+            // branch toc end
+            // branch 3.3.5 start
+            if (instance->GetBossState(BOSS_GRAND_CHAMPIONS) == NOT_STARTED &&
+                instance->GetBossState(BOSS_ARGENT_CHALLENGE_E) == NOT_STARTED &&
+                instance->GetBossState(BOSS_ARGENT_CHALLENGE_P) == NOT_STARTED &&
+                instance->GetBossState(BOSS_BLACK_KNIGHT) == NOT_STARTED)
+            {
+                InitGossipMenuFor(player, GOSSIP_START_EVENT1_MID);
+                AddGossipItemFor(player, GOSSIP_START_EVENT1_MID, GOSSIP_START_EVENT1_OID, GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF + 1);
+                SendGossipMenuFor(player, player->GetGossipTextId(GOSSIP_START_EVENT1_MID, me), me->GetGUID());
+            }
+            else
+            {
+                InitGossipMenuFor(player, GOSSIP_START_EVENT2_MID);
+                AddGossipItemFor(player, GOSSIP_START_EVENT2_MID, GOSSIP_START_EVENT2_OID, GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF + 1);
+                SendGossipMenuFor(player, player->GetGossipTextId(GOSSIP_START_EVENT2_MID, me), me->GetGUID());
+            }
+            // branch 3.3.5 end
             return true;
         }
 
