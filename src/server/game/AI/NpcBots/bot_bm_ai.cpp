@@ -280,6 +280,8 @@ public:
             if (!CheckAttackTarget())
                 return;
 
+            CheckUsableItems(diff);
+
             Attack(diff);
         }
 
@@ -313,9 +315,13 @@ public:
 
         void Attack(uint32 /*diff*/)
         {
-            StartAttack(opponent, IsMelee());
+            Unit* mytar = opponent ? opponent : disttarget ? disttarget : nullptr;
+            if (!mytar)
+                return;
 
-            MoveBehind(opponent);
+            StartAttack(mytar, IsMelee());
+
+            MoveBehind(mytar);
         }
 
         void DoBMMeleeAttackIfReady()
@@ -486,9 +492,10 @@ public:
                     continue;
 
                 if (!IAmFree())
-                    master->GetBotMgr()->AddBot(illusion, false);
+                    ASSERT(master->GetBotMgr()->AddBot(illusion));
 
-                illusion->SetCreatorGUID(me->GetGUID()); //TempSummon* Map::SummonCreature()
+                illusion->SetCreator(master); //TempSummon* Map::SummonCreature()
+                illusion->SetOwnerGUID(me->GetGUID());
 
                 //copy visuals
                 //illusion->SetEntry(me->GetEntry());
@@ -781,7 +788,7 @@ public:
             if (IsTempBot())
                 if (me->GetCreatorGUID().IsCreature())
                     if (Unit* bot = ObjectAccessor::GetUnit(*me, me->GetCreatorGUID()))
-                        if (bot->ToCreature()->IsNPCBot())
+                        if (bot->IsNPCBot())
                             bot->ToCreature()->OnBotDespawn(me);
 
             bot_ai::JustDied(u);

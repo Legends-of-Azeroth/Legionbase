@@ -38,6 +38,10 @@
 #include "World.h"
 #include "WorldPacket.h"
 
+//npcbot
+#include "botspell.h"
+//end npcbot
+
 AuraCreateInfo::AuraCreateInfo(SpellInfo const* spellInfo, uint8 auraEffMask, WorldObject* owner) :
     _spellInfo(spellInfo), _auraEffectMask(auraEffMask), _owner(owner)
 {
@@ -573,7 +577,7 @@ void Aura::_ApplyForTarget(Unit* target, Unit* caster, AuraApplication* auraApp)
         }
     }
     //npcbot: infinity cd for bots
-    if (caster && m_spellInfo->IsCooldownStartedOnEvent() && caster->GetTypeId() == TYPEID_UNIT && caster->ToCreature()->IsNPCBot())
+    if (caster && m_spellInfo->IsCooldownStartedOnEvent() && caster->IsNPCBot())
         caster->ToCreature()->AddBotSpellCooldown(m_spellInfo->Id, std::numeric_limits<uint32>::max());
     //end npcbot
 }
@@ -606,7 +610,7 @@ void Aura::_UnapplyForTarget(Unit* target, Unit* caster, AuraApplication* auraAp
         caster->GetSpellHistory()->SendCooldownEvent(GetSpellInfo());
 
     //npcbot: release cd state for bots
-    if (caster && m_spellInfo->IsCooldownStartedOnEvent() && caster->GetTypeId() == TYPEID_UNIT && caster->ToCreature()->IsNPCBot())
+    if (caster && m_spellInfo->IsCooldownStartedOnEvent() && caster->IsNPCBot())
         caster->ToCreature()->ReleaseBotSpellCooldown(m_spellInfo->Id);
     //end npcbot
 }
@@ -957,6 +961,14 @@ uint8 Aura::CalcMaxCharges(Unit* caster) const
     uint32 maxProcCharges = m_spellInfo->ProcCharges;
     if (SpellProcEntry const* procEntry = sSpellMgr->GetSpellProcEntry(GetId()))
         maxProcCharges = procEntry->Charges;
+
+    //npcbot: override spell proc
+    if (caster && caster->IsNPCBot())
+    {
+        if (SpellProcEntry const* procOverride = GetBotSpellProceEntryOverride(GetId()))
+            maxProcCharges = procOverride->Charges;
+    }
+    //end npcbot
 
     if (caster)
         if (Player* modOwner = caster->GetSpellModOwner())
@@ -1887,6 +1899,9 @@ bool Aura::CanStackWith(Aura const* existingAura) const
         return false;
 
     // check spell group stack rules
+    //npcbots: do not check stack rules for npcbots
+    if (!(sameCaster && GetOwner()->GetTypeId() == TYPEID_UNIT && GetOwner()->ToCreature()->IsNPCBotOrPet()))
+    //end npcbot
     switch (sSpellMgr->CheckSpellGroupStackRules(m_spellInfo, existingSpellInfo))
     {
         case SPELL_GROUP_STACK_RULE_EXCLUSIVE:
@@ -2008,6 +2023,16 @@ void Aura::PrepareProcToTrigger(AuraApplication* aurApp, ProcEventInfo& eventInf
     }
 
     SpellProcEntry const* procEntry = sSpellMgr->GetSpellProcEntry(GetId());
+
+    //npcbot: override spell proc
+    Unit const* caster = aurApp && aurApp->GetBase()->GetCasterGUID().IsCreature() ? aurApp->GetBase()->GetCaster() : nullptr;
+    if (caster && caster->IsNPCBot())
+    {
+        if (SpellProcEntry const* procOverride = GetBotSpellProceEntryOverride(GetId()))
+            procEntry = procOverride;
+    }
+    //end npcbot
+
     ASSERT(procEntry);
 
     // cooldowns should be added to the whole aura (see 51698 area aura)
@@ -2017,6 +2042,16 @@ void Aura::PrepareProcToTrigger(AuraApplication* aurApp, ProcEventInfo& eventInf
 uint8 Aura::GetProcEffectMask(AuraApplication* aurApp, ProcEventInfo& eventInfo, TimePoint now) const
 {
     SpellProcEntry const* procEntry = sSpellMgr->GetSpellProcEntry(GetId());
+
+    //npcbot: override spell proc
+    Unit const* caster = aurApp && aurApp->GetBase()->GetCasterGUID().IsCreature() ? aurApp->GetBase()->GetCaster() : nullptr;
+    if (caster && caster->IsNPCBot())
+    {
+        if (SpellProcEntry const* procOverride = GetBotSpellProceEntryOverride(GetId()))
+            procEntry = procOverride;
+    }
+    //end npcbot
+
     // only auras with spell proc entry can trigger proc
     if (!procEntry)
         return 0;

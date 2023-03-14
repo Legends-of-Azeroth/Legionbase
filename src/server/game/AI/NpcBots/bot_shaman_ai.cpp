@@ -1,5 +1,7 @@
 #include "bot_ai.h"
 #include "botmgr.h"
+#include "bottext.h"
+#include "bottraits.h"
 #include "Group.h"
 #include "Item.h"
 #include "Log.h"
@@ -985,15 +987,15 @@ public:
 
         void UpdateAI(uint32 diff) override
         {
-            CheckShamanisticRage(diff);
-            CheckThunderStorm(diff);
-
             if (!GlobalUpdate(diff))
                 return;
 
             DoVehicleActions(diff);
             if (!CanBotAttackOnVehicle())
                 return;
+
+            CheckShamanisticRage(diff);
+            CheckThunderStorm(diff);
 
             CheckHexy(diff);
             CheckEarthy(diff);
@@ -1010,6 +1012,7 @@ public:
 
             CheckBloodlust(diff);
             BuffAndHealGroup(diff);
+            CheckEarthShield(diff);
             CureGroup(CURE_TOXINS, diff);
             CheckTotems(diff);
             CheckShield(diff);
@@ -1037,31 +1040,36 @@ public:
             if (IsCasting())
                 return;
 
+            CheckUsableItems(diff);
+
             DoNormalAttack(diff);
         }
 
         void DoNormalAttack(uint32 diff)
         {
-            StartAttack(opponent, IsMelee());
-
-            if (!CanAffectVictim(SPELL_SCHOOL_MASK_FIRE|SPELL_SCHOOL_MASK_NATURE))
+            Unit* mytar = opponent ? opponent : disttarget ? disttarget : nullptr;
+            if (!mytar)
                 return;
+
+            StartAttack(mytar, IsMelee());
+
+            auto [can_do_frost, can_do_fire, can_do_nature] = CanAffectVictimBools(mytar, SPELL_SCHOOL_FROST, SPELL_SCHOOL_FIRE, SPELL_SCHOOL_NATURE);
 
             //AttackerSet m_attackers = master->getAttackers();
             //AttackerSet b_attackers = me->getAttackers();
-            float dist = me->GetDistance(opponent);
+            float dist = me->GetDistance(mytar);
 
             //spell reflections
-            if (IsSpellReady(EARTH_SHOCK_1, diff) && HasRole(BOT_ROLE_DPS) && dist < 25 && CanRemoveReflectSpells(opponent, EARTH_SHOCK_1) &&
-                doCast(opponent, EARTH_SHOCK_1))
+            if (IsSpellReady(EARTH_SHOCK_1, diff) && can_do_nature && HasRole(BOT_ROLE_DPS) && dist < 25 && CanRemoveReflectSpells(mytar, EARTH_SHOCK_1) &&
+                doCast(mytar, EARTH_SHOCK_1))
                 return;
 
-            MoveBehind(opponent);
+            MoveBehind(mytar);
 
             //STORMSTRIKE
-            if (IsSpellReady(STORMSTRIKE_1, diff) && HasRole(BOT_ROLE_DPS) && IsMelee() && dist <= 5 && Rand() < 120)
+            if (IsSpellReady(STORMSTRIKE_1, diff) && can_do_nature && HasRole(BOT_ROLE_DPS) && IsMelee() && dist <= 5 && Rand() < 120)
             {
-                if (doCast(opponent, GetSpell(STORMSTRIKE_1)))
+                if (doCast(mytar, GetSpell(STORMSTRIKE_1)))
                     return;
             }
             //SHOCKS
@@ -1069,23 +1077,23 @@ public:
                 (GetSpell(FLAME_SHOCK_1) || GetSpell(EARTH_SHOCK_1) || GetSpell(FROST_SHOCK_1)) &&
                 dist < 25 && Rand() < 70)
             {
-                if (GetSpell(FLAME_SHOCK_1))
+                if (GetSpell(FLAME_SHOCK_1) && can_do_fire)
                 {
-                    AuraEffect const* fsh = opponent->GetAuraEffect(SPELL_AURA_PERIODIC_DAMAGE, SPELLFAMILY_SHAMAN, 0x10000000, 0x0, 0x0, me->GetGUID());
+                    AuraEffect const* fsh = mytar->GetAuraEffect(SPELL_AURA_PERIODIC_DAMAGE, SPELLFAMILY_SHAMAN, 0x10000000, 0x0, 0x0, me->GetGUID());
                     if (!fsh || fsh->GetBase()->GetDuration() < 3000)
                     {
-                        if (doCast(opponent, GetSpell(FLAME_SHOCK_1)))
+                        if (doCast(mytar, GetSpell(FLAME_SHOCK_1)))
                             return;
                     }
                 }
 
-                uint32 SHOCK = GetSpell(FROST_SHOCK_1);
-                if (!SHOCK)
+                uint32 SHOCK = can_do_frost ? GetSpell(FROST_SHOCK_1) : 0;
+                if (!SHOCK && can_do_nature)
                     SHOCK = GetSpell(EARTH_SHOCK_1);
 
                 if (SHOCK)
                 {
-                    if (doCast(opponent, SHOCK))
+                    if (doCast(mytar, SHOCK))
                         return;
                 }
             }
@@ -1093,17 +1101,17 @@ public:
             //Feral Spirit
             if (IsSpellReady(FERAL_SPIRIT_1, diff) && HasRole(BOT_ROLE_DPS) && Rand() < 40 && dist < 5)
             {
-                SummonBotPet(opponent);
+                SummonBotPet(mytar);
                 SetSpellCooldown(FERAL_SPIRIT_1, 180000);
                 return;
             }
 
             //LAVA BURST
-            if (IsSpellReady(LAVA_BURST_1, diff) && _spec == BOT_SPEC_SHAMAN_ELEMENTAL &&
+            if (IsSpellReady(LAVA_BURST_1, diff) && can_do_fire && _spec == BOT_SPEC_SHAMAN_ELEMENTAL &&
                 HasRole(BOT_ROLE_DPS) && dist < CalcSpellMaxRange(LAVA_BURST_1) && Rand() < 60 &&
                 (me->getAttackers().empty() || dist > 10))
             {
-                if (doCast(opponent, GetSpell(LAVA_BURST_1)))
+                if (doCast(mytar, GetSpell(LAVA_BURST_1)))
                     return;
             }
 
@@ -1112,17 +1120,17 @@ public:
                 return;
 
             //CHAIN LIGHTNING
-            if (IsSpellReady(CHAIN_LIGHTNING_1, diff) && HasRole(BOT_ROLE_DPS) && dist < CalcSpellMaxRange(CHAIN_LIGHTNING_1) && Rand() < 80)
+            if (IsSpellReady(CHAIN_LIGHTNING_1, diff) && can_do_nature && HasRole(BOT_ROLE_DPS) && dist < CalcSpellMaxRange(CHAIN_LIGHTNING_1) && Rand() < 80)
             {
-                Unit* u = FindSplashTarget(35.f, opponent, 5.f);
-                if (u && doCast(opponent, GetSpell(CHAIN_LIGHTNING_1)))
+                Unit* u = FindSplashTarget(35.f, mytar, 5.f);
+                if (u && doCast(mytar, GetSpell(CHAIN_LIGHTNING_1)))
                     return;
             }
             //LIGHTNING BOLT
-            if (IsSpellReady(LIGHTNING_BOLT_1, diff) && HasRole(BOT_ROLE_DPS) && dist < CalcSpellMaxRange(LIGHTNING_BOLT_1))
+            if (IsSpellReady(LIGHTNING_BOLT_1, diff) && can_do_nature && HasRole(BOT_ROLE_DPS) && dist < CalcSpellMaxRange(LIGHTNING_BOLT_1))
             {
                 uint32 LIGHTNING_BOLT = GetSpell(LIGHTNING_BOLT_1);
-                if (doCast(opponent, LIGHTNING_BOLT))
+                if (doCast(mytar, LIGHTNING_BOLT))
                     return;
             }
         }
@@ -1176,7 +1184,7 @@ public:
             if (GC_Timer > diff || me->IsMounted() || IsCasting() || Rand() > 25)
                 return;
 
-            RezGroup(GetSpell(ANCESTRAL_SPIRIT_1));
+            ResurrectGroup(GetSpell(ANCESTRAL_SPIRIT_1));
 
             if (mhEnchantExpireTimer > 0 && mhEnchantExpireTimer <= diff)
             {
@@ -1264,17 +1272,8 @@ public:
 
         bool BuffTarget(Unit* target, uint32 /*diff*/) override
         {
-            if (GetSpell(EARTH_SHIELD_1) && Earthy == false && IsTank(target) && (target == me || !IsTank()) &&
-                (target->IsInCombat() || !target->isMoving()) && Rand() < 35)
-            {
-                AuraEffect const* eShield = target->GetAuraEffect(SPELL_AURA_REDUCE_PUSHBACK, SPELLFAMILY_SHAMAN, 0x0, 0x400, 0x0);
-                bool cast = (!eShield || eShield->GetBase()->GetCharges() < 5 || eShield->GetBase()->GetDuration() < 30000);
-
-                if (cast && doCast(target, GetSpell(EARTH_SHIELD_1)))
-                    return true;
-            }
-
-            if (me->IsInCombat() && !master->GetMap()->IsRaid()) return false;
+            if (me->IsInCombat() && !master->GetMap()->IsRaid())
+                return false;
 
             if (target->HasUnitMovementFlag(MOVEMENTFLAG_SWIMMING))
             {
@@ -1296,6 +1295,74 @@ public:
                 }
             }
             return false;
+        }
+
+        void CheckEarthShield(uint32 diff)
+        {
+            if (!IsSpellReady(EARTH_SHIELD_1, diff) || IAmFree() || Earthy == true || Rand() > (65 - 45 * me->IsInCombat()))
+                return;
+
+            static auto can_affect = [](WorldObject const* o, Unit const* unit)
+            {
+                AuraEffect const* eShield = unit->GetAuraEffect(SPELL_AURA_REDUCE_PUSHBACK, SPELLFAMILY_SHAMAN, 0x0, 0x400, 0x0);
+                return (!eShield || eShield->GetBase()->GetCharges() < 5 || eShield->GetBase()->GetDuration() < 30000) && o->GetDistance(unit) < 40 && (unit->IsInCombat() || !unit->isMoving());
+            };
+
+            Group const* gr = master->GetGroup();
+            if (!gr)
+            {
+                Player* pl = master;
+
+                if (IsTank(pl) && can_affect(me, pl) && doCast(pl, GetSpell(EARTH_SHIELD_1)))
+                    return;
+
+                BotMap const* map = pl->GetBotMgr()->GetBotMap();
+                for (BotMap::const_iterator it = map->begin(); it != map->end(); ++it)
+                {
+                    Unit* u = it->second;
+                    if (!u || !u->IsInWorld() || me->GetMap() != u->FindMap() || !u->InSamePhase(me))
+                        continue;
+
+                    if (IsTank(u))
+                    {
+                        if (can_affect(me, u))
+                        {
+                            if (doCast(u, GetSpell(EARTH_SHIELD_1)))
+                            {
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
+            else
+            {
+                for (GroupReference const* ref = gr->GetFirstMember(); ref != nullptr; ref = ref->next())
+                {
+                    Player* pl = ref->GetSource();
+                    if (!pl || !pl->IsInWorld() || me->GetMap() != pl->FindMap() || !pl->InSamePhase(me))
+                        continue;
+
+                    if (IsTank(pl) && can_affect(me, pl) && doCast(pl, GetSpell(EARTH_SHIELD_1)))
+                        return;
+
+                    if (!pl->HaveBot())
+                        continue;
+
+                    BotMap const* map = pl->GetBotMgr()->GetBotMap();
+                    for (BotMap::const_iterator it = map->begin(); it != map->end(); ++it)
+                    {
+                        Unit* u = it->second;
+                        if (!u || !u->IsInWorld() || me->GetMap() != u->FindMap() || !u->InSamePhase(me))
+                            continue;
+                        if (IsTank(u) && can_affect(me, u) && doCast(u, GetSpell(EARTH_SHIELD_1)))
+                            return;
+                    }
+                }
+            }
+
+            if (can_affect(me, master) && doCast(master, GetSpell(EARTH_SHIELD_1)))
+                return;
         }
 
         void CheckDispel(uint32 diff)
@@ -1375,7 +1442,7 @@ public:
                 if (doCast(target, GetSpell(RIPTIDE_1)))
                     return true;
             }
-            if (IsSpellReady(CHAIN_HEAL_1, diff) && xppct > 35 && xphploss > _heals[CHAIN_HEAL_1] &&
+            if (IsSpellReady(CHAIN_HEAL_1, diff) && !IAmFree() && xppct > 35 && xphploss > _heals[CHAIN_HEAL_1] &&
                 (!tanking || Rand() < 60 || target->GetAuraEffect(SPELL_AURA_PERIODIC_HEAL, SPELLFAMILY_SHAMAN, 0x0, 0x0, 0x10, me->GetGUID())))
             {
                 if (doCast(target, GetSpell(CHAIN_HEAL_1)))
@@ -2055,8 +2122,7 @@ public:
 
         void SummonBotPet(Unit* target)
         {
-            //if (botPet)
-            //    botPet->ToTempSummon()->UnSummon();
+            UnsummonWolves();
 
             uint32 entry = BOT_PET_SPIRIT_WOLF;
 
@@ -2065,10 +2131,10 @@ public:
                 //Position pos;
 
                 //45 sec duration
-                Creature* myPet = me->SummonCreature(entry, *me, TEMPSUMMON_MANUAL_DESPAWN);
+                Creature* myPet = me->SummonCreature(entry, *me, TEMPSUMMON_CORPSE_TIMED_DESPAWN, 5s);
                 //me->GetNearPoint(myPet, pos.m_positionX, pos.m_positionY, pos.m_positionZ, 0, 2, me->GetOrientation());
                 //myPet->GetMotionMaster()->MovePoint(me->GetMapId(), pos);
-                myPet->SetCreatorGUID(master->GetGUID());
+                myPet->SetCreator(master);
                 myPet->SetOwnerGUID(me->GetGUID());
                 myPet->SetFaction(master->GetFaction());
                 myPet->SetControlledByPlayer(!IAmFree());
@@ -2080,7 +2146,7 @@ public:
                 //botPet = myPet;
 
                 myPet->Attack(target, true);
-                if (!HasBotCommandState(BOT_COMMAND_STAY))
+                if (!HasBotCommandState(BOT_COMMAND_MASK_UNCHASE))
                     myPet->GetMotionMaster()->MoveChase(target);
             }
         }
@@ -2132,17 +2198,23 @@ public:
             }
         }
 
-        void UnsummonAll() override
+        void UnsummonWolves()
         {
-            //if (botPet)
-            //    botPet->ToTempSummon()->UnSummon();
-
             for (uint8 i = 0; i != MAX_WOLVES; ++i)
             {
                 if (_wolves[i])
+                {
                     if (Unit* wo = ObjectAccessor::GetUnit(*me, _wolves[i]))
                         wo->ToTempSummon()->UnSummon();
+                    else
+                        _wolves[i] = ObjectGuid::Empty;
+                }
             }
+        }
+
+        void UnsummonAll() override
+        {
+            UnsummonWolves();
 
             for (uint8 i = 0; i != MAX_TOTEMS; ++i)
             {
@@ -2291,7 +2363,7 @@ public:
 
             //TODO: gets overriden in Spell::EffectSummonType (end)
             //Without setting creator correctly it will be impossible to use summon X elemental totems
-            summon->SetCreatorGUID(me->GetGUID());
+            summon->SetCreator(me);
             summon->SetDisplayId(sObjectMgr->GetModelForTotem(SummonSlot(slot+1), Races(me->GetRace())));
             summon->SetFaction(me->GetFaction());
             summon->SetPvP(me->IsPvP());
@@ -2535,7 +2607,7 @@ public:
             RefreshAura(ELEMENTAL_DEVASTATION2, isEnha && level >= 15 && level < 18 ? 1 : 0);
             RefreshAura(ELEMENTAL_DEVASTATION1, isEnha && level >= 12 && level < 15 ? 1 : 0);
             RefreshAura(ELEMENTAL_FOCUS, isElem && level >= 20 ? 1 : 0);
-            RefreshAura(ELEMENTAL_OATH, isElem && level >= 40 ? 1 : 0);
+            RefreshAura(ELEMENTAL_OATH, !IAmFree() && isElem && level >= 40 ? 1 : 0);
             //RefreshAura(STORM_EARTH_AND_FIRE, isElem && level >= 45 ? 1 : 0);
 
             RefreshAura(TOUGHNESS, level >= 25 ? 1 : 0);
@@ -2545,7 +2617,7 @@ public:
             RefreshAura(FLURRY2, isEnha && level >= 26 && level < 27 ? 1 : 0);
             RefreshAura(FLURRY1, isEnha && level >= 25 && level < 26 ? 1 : 0);
             RefreshAura(WEAPON_MASTERY, isEnha && level >= 30 ? 1 : 0);
-            RefreshAura(UNLEASHED_RAGE, isEnha && level >= 35 ? 1 : 0);
+            RefreshAura(UNLEASHED_RAGE, !IAmFree() && isEnha && level >= 35 ? 1 : 0);
             RefreshAura(IMPROVED_STORMSTRIKE, isEnha && level >= 40 ? 1 : 0);
             RefreshAura(STATIC_SHOCK, isEnha && level >= 41 ? 1 : 0);
             RefreshAura(EARTHEN_POWER, isEnha && level >= 50 ? 1 : 0);

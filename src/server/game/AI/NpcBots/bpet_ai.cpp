@@ -53,10 +53,10 @@ float constexpr NecromancerPetPositionAnglesByPosNumber[NECROMANCER_MAX_PET_POSI
 {
     0.f,
     float(M_PI),
-    float(M_PI) / 5.f * 1.f,
-    float(M_PI) / 5.f * 4.f,
-    float(M_PI) / 5.f * 2.f,
-    float(M_PI) / 5.f * 3.f
+    0.6283185f,//1*M_PI/5
+    2.5132741f,//4*M_PI/5
+    1.2566370f,//2*M_PI/5
+    1.8849555f //3*M_PI/5
 };
 
 extern uint8 GroupIconsFlags[TARGETICONCOUNT];
@@ -77,6 +77,8 @@ bot_pet_ai::bot_pet_ai(Creature* creature) : CreatureAI(creature)
     _updateTimerMedium = 0;
     _updateTimerEx1 = urand(12000, 15000);
     checkAurasTimer = 0;
+
+    _wanderer = false;
 
     myType = 0;
     petOwner = nullptr;
@@ -111,7 +113,7 @@ void bot_pet_ai::_calculatePos(Position& pos) const
 {
     float x,y,z;
     //destination
-    if (petOwner->GetTransport() || !petOwner->GetMotionMaster()->GetDestination(x, y, z))
+    if (!petOwner->GetMotionMaster()->GetDestination(x, y, z) || petOwner->GetTransport())
         petOwner->GetPosition(x, y, z);
     //relative angle
     float o = petOwner->GetOrientation() + PET_FOLLOW_ANGLE;
@@ -1252,7 +1254,7 @@ bool bot_pet_ai::IsInBotParty(Unit const* unit) const
             return false;
 
         return
-            (unit->GetTypeId() == TYPEID_PLAYER || unit->ToCreature()->IsPet() || unit->ToCreature()->IsNPCBot() || unit->ToCreature()->IsNPCBotPet()) &&
+            (unit->GetTypeId() == TYPEID_PLAYER || unit->ToCreature()->IsPet() || unit->IsNPCBot() || unit->IsNPCBotPet()) &&
             (unit->GetFaction() == me->GetFaction() ||
             (me->GetReactionTo(unit) >= REP_FRIENDLY && unit->GetReactionTo(me) >= REP_FRIENDLY));
     }
@@ -1275,7 +1277,7 @@ bool bot_pet_ai::IsInBotParty(Unit const* unit) const
     //Player-controlled creature case
     if (Creature const* cre = unit->ToCreature())
     {
-        ObjectGuid ownerGuid = unit->GetOwnerGUID();
+        ObjectGuid ownerGuid = unit->GetOwnerGUID() ? unit->GetOwnerGUID() : unit->GetCreatorGUID();
         //controlled by master
         if (ownerGuid == petOwner->GetBotOwner()->GetGUID())
             return true;
@@ -1974,7 +1976,7 @@ bool bot_pet_ai::Wait()
         return true;
 
     if (IAmFree())
-        waitTimer = me->IsInCombat() ? 500 : urand(750, 1250);
+        waitTimer = me->IsInCombat() ? 500 : ((__rand + 100) * 20);
     else if (!me->GetMap()->IsRaid())
         waitTimer = std::min<uint32>(uint32(50 * (petOwner->GetBotOwner()->GetNpcBotsCount() - 1) + __rand + __rand), 500);
     else
@@ -2101,6 +2103,7 @@ void bot_pet_ai::IsSummonedBy(WorldObject* summoner)
     myType = me->GetEntry();
     //myType = petOwner->GetBotAI()->GetAIMiscValue(BOTAI_MISC_PET_TYPE);
     //ASSERT(myType);
+    me->setActive(true);
     ASSERT(!me->GetBotAI());
     ASSERT(!me->GetBotPetAI());
     me->SetBotPetAI(this);
@@ -2169,6 +2172,9 @@ bool bot_pet_ai::GlobalUpdate(uint32 diff)
         TC_LOG_ERROR("entities.unit", "botpet:GlobalUpdate(): no owner!");
         return false;
     }
+
+    if (!BotMgr::IsNpcBotModEnabled())
+        return false;
 
     ReduceCD(diff);
 

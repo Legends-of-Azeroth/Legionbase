@@ -177,33 +177,39 @@ public:
             if (IsCasting())
                 return;
 
+            CheckUsableItems(diff);
+
             DoRangedAttack(diff);
         }
 
         void DoRangedAttack(uint32 diff)
         {
-            StartAttack(opponent, IsMelee());
+            Unit* mytar = opponent ? opponent : disttarget ? disttarget : nullptr;
+            if (!mytar)
+                return;
+
+            StartAttack(mytar, IsMelee());
 
             Counter(diff);
 
             CheckBlackArrow(diff);
 
-            MoveBehind(opponent);
+            MoveBehind(mytar);
 
-            float dist = me->GetDistance(opponent);
+            float dist = me->GetDistance(mytar);
             float maxRangeLong = 30.f;
 
-            bool inpostion = !opponent->HasAuraType(SPELL_AURA_MOD_CONFUSE) || dist > maxRangeLong - 15.f;
+            bool inpostion = !mytar->HasAuraType(SPELL_AURA_MOD_CONFUSE) || dist > maxRangeLong - 15.f;
 
             //Auto Shot
             if (Spell const* shot = me->GetCurrentSpell(CURRENT_AUTOREPEAT_SPELL))
             {
-                if (shot->GetSpellInfo()->Id == AUTO_SHOT_1 && (shot->m_targets.GetUnitTarget() != opponent || !inpostion))
+                if (shot->GetSpellInfo()->Id == AUTO_SHOT_1 && (shot->m_targets.GetUnitTarget() != mytar || !inpostion))
                     me->InterruptSpell(CURRENT_AUTOREPEAT_SPELL);
             }
             else if (HasRole(BOT_ROLE_DPS)/* && dist > 5*/ && dist < maxRangeLong)
             {
-                if (doCast(opponent, AUTO_SHOT_1))
+                if (doCast(mytar, AUTO_SHOT_1))
                 {}
             }
 
@@ -213,9 +219,9 @@ public:
 
             //Black Arrow
             if (IsSpellReady(BLACK_ARROW_1, diff) && HasRole(BOT_ROLE_DPS) &&
-                (Rand() < 20 || !opponent->GetAuraEffect(SPELL_AURA_PERIODIC_DAMAGE, SPELLFAMILY_WARLOCK, 0x0, 0x4, 0x0, me->GetGUID())))
+                (Rand() < 20 || !mytar->GetAuraEffect(SPELL_AURA_PERIODIC_DAMAGE, SPELLFAMILY_WARLOCK, 0x0, 0x4, 0x0, me->GetGUID())))
             {
-                if (doCast(opponent, GetSpell(BLACK_ARROW_1)))
+                if (doCast(mytar, GetSpell(BLACK_ARROW_1)))
                     return;
             }
         }
@@ -294,7 +300,7 @@ public:
             damage = int32(fdamage * pctbonus + flat_mod);
         }
 
-        void ApplyClassEffectMods(WorldObject const* /*wtarget*/, SpellInfo const* spellInfo, uint8 effIndex, float& value) const override
+        void ApplyClassEffectMods(SpellInfo const* spellInfo, uint8 effIndex, float& value) const override
         {
             uint32 baseId = spellInfo->GetFirstRankSpell()->Id;
             //uint8 lvl = me->GetLevel();
@@ -460,9 +466,9 @@ public:
 
             Position pos = from->GetPosition();
 
-            Creature* myPet = me->SummonCreature(entry, pos, TEMPSUMMON_MANUAL_DESPAWN);
-            myPet->SetCreatorGUID(master->GetGUID());
-            myPet->SetOwnerGUID(master->GetGUID());
+            Creature* myPet = me->SummonCreature(entry, pos, TEMPSUMMON_CORPSE_TIMED_DESPAWN, 1s);
+            myPet->SetCreator(master);
+            myPet->SetOwnerGUID(me->GetGUID());
             myPet->SetFaction(master->GetFaction());
             myPet->SetControlledByPlayer(!IAmFree());
             myPet->SetPvP(me->IsPvP());

@@ -1,5 +1,6 @@
 #include "bot_ai.h"
 #include "botspell.h"
+#include "bottraits.h"
 #include "MotionMaster.h"
 #include "Player.h"
 #include "ScriptMgr.h"
@@ -106,7 +107,7 @@ public:
 
             checkAuraTimer = 10000;
 
-            if (!me->HasAura(BRILLIANCE_AURA, me->GetGUID()))
+            if (!IAmFree() && !me->HasAura(BRILLIANCE_AURA, me->GetGUID()))
                 RefreshAura(BRILLIANCE_AURA);
         }
 
@@ -150,14 +151,20 @@ public:
             if (IsCasting())
                 return;
 
+            CheckUsableItems(diff);
+
             Attack(diff);
         }
 
         void Attack(uint32 diff)
         {
-            StartAttack(opponent, IsMelee());
+            Unit* mytar = opponent ? opponent : disttarget ? disttarget : nullptr;
+            if (!mytar)
+                return;
 
-            MoveBehind(opponent);
+            StartAttack(mytar, IsMelee());
+
+            MoveBehind(mytar);
 
             if (!HasRole(BOT_ROLE_DPS))
                 return;
@@ -165,24 +172,21 @@ public:
             if (GC_Timer > diff)
                 return;
 
-            if (CanAffectVictim(SPELL_SCHOOL_MASK_FROST))
+            //Blizzard
+            if (IsSpellReady(BLIZZARD_1, diff) && !JumpingOrFalling() && Rand() < 50)
             {
-                //Blizzard
-                if (IsSpellReady(BLIZZARD_1, diff) && !JumpingOrFalling() && Rand() < 50)
+                if (Unit* blizztarget = FindAOETarget(CalcSpellMaxRange(BLIZZARD_1)))
                 {
-                    if (Unit* blizztarget = FindAOETarget(CalcSpellMaxRange(BLIZZARD_1)))
-                    {
-                        if (doCast(blizztarget, GetSpell(BLIZZARD_1)))
-                            return;
-                    }
-
-                    SetSpellCooldown(BLIZZARD_1, 1000); //fail
+                    if (doCast(blizztarget, GetSpell(BLIZZARD_1)))
+                        return;
                 }
+
+                SetSpellCooldown(BLIZZARD_1, 1000); //fail
             }
 
-            if (IsSpellReady(MAIN_ATTACK_1, diff))
+            if (IsSpellReady(MAIN_ATTACK_1, diff) && CanAffectVictimAny(mytar, SPELL_SCHOOL_FIRE, SPELL_SCHOOL_ARCANE))
             {
-                if (doCast(opponent, GetSpell(MAIN_ATTACK_1)))
+                if (doCast(mytar, GetSpell(MAIN_ATTACK_1)))
                     return;
             }
         }
@@ -267,10 +271,10 @@ public:
             Position pos;
 
             //water elemetal 1 minute duration
-            Creature* myPet = me->SummonCreature(entry, *me, TEMPSUMMON_TIMED_OR_CORPSE_DESPAWN, std::chrono::minutes(IAmFree() ? 60 : 1));
+            Creature* myPet = me->SummonCreature(entry, *me, TEMPSUMMON_CORPSE_TIMED_DESPAWN, 5s);
             me->GetNearPoint(myPet, pos.m_positionX, pos.m_positionY, pos.m_positionZ, 2, me->GetOrientation());
             myPet->GetMotionMaster()->MovePoint(me->GetMapId(), pos);
-            myPet->SetCreatorGUID(master->GetGUID());
+            myPet->SetCreator(master);
             myPet->SetOwnerGUID(me->GetGUID());
             myPet->SetFaction(master->GetFaction());
             myPet->SetControlledByPlayer(!IAmFree());
