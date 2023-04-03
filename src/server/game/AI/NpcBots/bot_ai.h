@@ -36,6 +36,7 @@ class Spell;
 class SpellCastTargets;
 class Unit;
 class Vehicle;
+class WanderNode;
 
 class bot_ai : public CreatureAI
 {
@@ -92,7 +93,7 @@ class bot_ai : public CreatureAI
         Creature* GetBotsPet() const { return botPet; }
 
         void Evade();
-        void GetNextEvadeMovePoint(Position& pos, bool& need_jump) const;
+        void GetNextEvadeMovePoint(Position& pos, bool& use_path) const;
 
         EventProcessor* GetEvents() { return &Events; }
         ObjectGuid::LowType GetBotOwnerGuid() const { return _ownerGuid; }
@@ -160,20 +161,18 @@ class bot_ai : public CreatureAI
         //wandering bots
         bool IsWanderer() const { return _wanderer; }
         void SetWanderer();
-        uint32 GetTravelNodeCur() const { return _travel_node_cur; }
-        uint32 GetTravelNodeLast() const { return _travel_node_last; }
-        void SetTravelNodeCur(uint32 nodeId) { _travel_node_cur = nodeId; }
-        void SetTravelNodeLast(uint32 nodeId) { _travel_node_last = nodeId; }
-        uint32 GetNextTravelNode(Position& pos) const;
+        WanderNode const* GetNextTravelNode(Position const* from, bool random) const;
 
         static bool CCed(Unit const* target, bool root = false);
 
-        void TeleportHome();
-        bool FinishTeleport(/*uint32 mapId, uint32 instanceId, float x, float y, float z, float o*/);
+        void TeleportHomeStart(bool reset);
+        void TeleportHome(bool reset);
+        bool FinishTeleport(bool reset);
 
-        bool IsDuringTeleport() const { return teleFinishEvent || teleHomeEvent; }
+        bool IsDuringTeleport() const { return teleFinishEvent || teleHomeEvent || _duringTeleport; }
         void SetTeleportFinishEvent(TeleportFinishEvent* tfevent) { ASSERT(!teleFinishEvent); teleFinishEvent = tfevent; }
         void AbortTeleport();
+        void SetInDuringTeleport(bool value) { _duringTeleport = value; }
 
         uint8 GetPlayerClass() const;
         uint8 GetPlayerRace() const;
@@ -389,7 +388,7 @@ class bot_ai : public CreatureAI
         void CalculateAttackPos(Unit* target, Position &pos, bool& force) const;
         void GetInPosition(bool force, Unit* newtarget, Position* pos = nullptr);
         bool AdjustTankingPosition(Unit const* mytarget) const;
-        virtual float GetSpellAttackRange(bool longRange) const { return longRange ? 25.f : 15.f; }
+        virtual float GetSpellAttackRange(bool longRange) const { return longRange ? 23.f : 15.f; }
         virtual void CheckAttackState();
         void OnSpellHit(Unit* caster, SpellInfo const* spell);
         void OnSpellHitTarget(Unit* /*target*/, SpellInfo const* spell);
@@ -567,7 +566,6 @@ class bot_ai : public CreatureAI
         void _autoLootCreatureItems(Player* receiver, Creature* creature, uint32 lootQualityMask, uint32 lootThreshold) const;
         void _autoLootCreature(Creature* creature);
 
-        bool _canGenerateEquipmentInSlot(uint8 slot, bool empty_only = false) const;
         bool _canUseOffHand() const;
         bool _canUseRanged() const;
         bool _canUseRelic() const;
@@ -575,7 +573,6 @@ class bot_ai : public CreatureAI
         bool _unequip(uint8 slot, ObjectGuid receiver);
         bool _equip(uint8 slot, Item* newItem, ObjectGuid receiver);
         bool _resetEquipment(uint8 slot, ObjectGuid receiver);
-        void _generateGear();
 
         void _castBotItemUseSpell(Item const* item, SpellCastTargets const& targets/*, uint8 cast_count = 0, uint32 glyphIndex = 0*/);
 
@@ -616,6 +613,7 @@ class bot_ai : public CreatureAI
         SpellInfo const* m_botSpellInfo;
         Position homepos, movepos, attackpos, sendlastpos;
         Position sendpos[MAX_SEND_POINTS];
+        AoeSpotsVec _aoeSpots;
 
         uint32 _botCommandState;
         uint8 _botAwaitState;
@@ -648,13 +646,13 @@ class bot_ai : public CreatureAI
         bool firstspawn;
         bool _evadeMode;
         bool _atHome;
+        bool _duringTeleport;
 
         //wandering bots
         bool _wanderer;
         uint8 _baseLevel;
-        uint32 _travel_node_last;
-        uint32 _travel_node_cur;
-        std::unordered_set<BotEquipSlot> _equipsSlotsToGenerate;
+        WanderNode const* _travel_node_last;
+        WanderNode const* _travel_node_cur;
         std::vector<std::pair<uint32, std::string>> _travelHistory;
 
         float _energyFraction;
