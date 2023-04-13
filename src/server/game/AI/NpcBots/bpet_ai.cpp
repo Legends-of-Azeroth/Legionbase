@@ -1216,10 +1216,7 @@ void bot_pet_ai::OnOwnerDamagedBy(Unit* attacker)
 {
     if (petOwner->GetBotAI()->HasBotCommandState(BOT_COMMAND_MASK_UNMOVING))
         return;
-    if (me->GetVictim() && (!IAmFree() || me->GetDistance(me->GetVictim()) < me->GetDistance(attacker)))
-        return;
-
-    if (!me->IsValidAttackTarget(attacker) || !attacker->isTargetableForAttack() || IsInBotParty(attacker))
+    if (!petOwner->GetBotAI()->CanBotAttack(attacker))
         return;
 
     SetBotCommandState(BOT_COMMAND_COMBATRESET);
@@ -2068,6 +2065,11 @@ bool bot_pet_ai::StartAttack(Unit const* u, bool force)
 void bot_pet_ai::JustDied(Unit*)
 {
     KillEvents(false);
+}
+
+void bot_pet_ai::KilledUnit(Unit* u)
+{
+    GetPetsOwner()->GetBotAI()->KilledUnit(u);
 }
 
 void bot_pet_ai::AttackStart(Unit* /*u*/)

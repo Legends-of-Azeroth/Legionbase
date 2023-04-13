@@ -8597,6 +8597,14 @@ void Player::SendLoot(ObjectGuid guid, LootType loot_type)
                 if (GameObjectTemplateAddon const* addon = go->GetTemplateAddon())
                     loot->generateMoneyLoot(addon->Mingold, addon->Maxgold);
 
+            //npcbot: fill wandering bot kill reward
+            if (lootid)
+            {
+                if (go->GetEntry() == GO_BOT_MONEY_BAG)
+                    BotMgr::OnBotWandererKilled(go);
+            }
+            //end npcbot
+
             if (loot_type == LOOT_FISHING)
                 go->getFishLoot(loot, this);
             else if (loot_type == LOOT_FISHING_JUNK)
@@ -24462,11 +24470,11 @@ void Player::SetBattlegroundOrBattlefieldRaid(Group* group, int8 subgroup)
         BotMap const* map = GetBotMgr()->GetBotMap();
         for (BotMap::const_iterator itr = map->begin(); itr != map->end(); ++itr)
         {
-            Creature const* bot = itr->second;
+            Creature* bot = itr->second;
             if (!bot || !GetGroup()->IsMember(bot->GetGUID()))
                 continue;
 
-            ASSERT(group->AddMember((Player*)bot));
+            ASSERT(group->AddMember(bot));
         }
     }
     //end npcbot
